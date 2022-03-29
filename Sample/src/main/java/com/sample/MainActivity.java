@@ -10,8 +10,10 @@ import android.graphics.Paint;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.MediaPlayer;
+import android.media.MediaPlayer.OnCompletionListener;
+import android.media.MediaPlayer.OnErrorListener;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import master.flame.danmaku.danmaku.util.SystemClock;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -23,9 +25,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.View;
 import android.widget.Button;
-import android.widget.PopupWindow;
 import android.widget.VideoView;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
@@ -34,7 +34,6 @@ import java.net.URLConnection;
 import java.util.HashMap;
 import java.util.Timer;
 import java.util.TimerTask;
-
 import master.flame.danmaku.controller.IDanmakuView;
 import master.flame.danmaku.danmaku.loader.ILoader;
 import master.flame.danmaku.danmaku.loader.IllegalDataException;
@@ -54,30 +53,19 @@ import master.flame.danmaku.danmaku.util.IOUtils;
 public class MainActivity extends Activity implements View.OnClickListener {
 
     private IDanmakuView mDanmakuView;
-
     private View mMediaController;
-
-    public PopupWindow mPopupWindow;
-
     private Button mBtnRotate;
-
     private Button mBtnHideDanmaku;
-
     private Button mBtnShowDanmaku;
-
     private BaseDanmakuParser mParser;
-
     private Button mBtnPauseDanmaku;
-
     private Button mBtnResumeDanmaku;
-
     private Button mBtnSendDanmaku;
-
     private Button mBtnSendDanmakuTextAndImage;
-
     private Button mBtnSendDanmakus;
+    private VideoView mVideoView;
     private DanmakuContext mContext;
-    private BaseCacheStuffer.Proxy mCacheStufferAdapter = new BaseCacheStuffer.Proxy() {
+    private final BaseCacheStuffer.Proxy mCacheStufferAdapter = new BaseCacheStuffer.Proxy() {
 
         private Drawable mDrawable;
 
@@ -92,7 +80,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                         String url = "http://www.bilibili.com/favicon.ico";
                         InputStream inputStream = null;
                         Drawable drawable = mDrawable;
-                        if(drawable == null) {
+                        if (drawable == null) {
                             try {
                                 URLConnection urlConnection = new URL(url).openConnection();
                                 inputStream = urlConnection.getInputStream();
@@ -110,7 +98,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
                             drawable.setBounds(0, 0, 100, 100);
                             SpannableStringBuilder spannable = createSpannable(drawable);
                             danmaku.text = spannable;
-                            if(mDanmakuView != null) {
+                            if (mDanmakuView != null) {
                                 mDanmakuView.invalidateDanmaku(danmaku, false);
                             }
                             return;
@@ -130,6 +118,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
      * 绘制背景(自定义弹幕样式)
      */
     private static class BackgroundCacheStuffer extends SpannedCacheStuffer {
+
         // 通过扩展SimpleTextCacheStuffer或SpannedCacheStuffer个性化你的弹幕样式
         final Paint paint = new Paint();
 
@@ -142,11 +131,13 @@ public class MainActivity extends Activity implements View.OnClickListener {
         @Override
         public void drawBackground(BaseDanmaku danmaku, Canvas canvas, float left, float top) {
             paint.setColor(0x8125309b);
+            //paint.setColor(0xccffffff);
             canvas.drawRect(left + 2, top + 2, left + danmaku.paintWidth - 2, top + danmaku.paintHeight - 2, paint);
         }
 
         @Override
-        public void drawStroke(BaseDanmaku danmaku, String lineText, Canvas canvas, float left, float top, Paint paint) {
+        public void drawStroke(BaseDanmaku danmaku, String lineText, Canvas canvas, float left, float top,
+            Paint paint) {
             // 禁用描边绘制
         }
     }
@@ -185,7 +176,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
     }
 
     private void findViews() {
-
         mMediaController = findViewById(R.id.media_controller);
         mBtnRotate = (Button) findViewById(R.id.rotate);
         mBtnHideDanmaku = (Button) findViewById(R.id.btn_hide);
@@ -206,7 +196,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mBtnSendDanmakus.setOnClickListener(this);
 
         // VideoView
-        VideoView mVideoView = (VideoView) findViewById(R.id.videoview);
+        mVideoView = (VideoView) findViewById(R.id.videoview);
         // DanmakuView
 
         // 设置最大显示行数
@@ -219,11 +209,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
         mDanmakuView = (IDanmakuView) findViewById(R.id.sv_danmaku);
         mContext = DanmakuContext.create();
-        mContext.setDanmakuStyle(IDisplayer.DANMAKU_STYLE_STROKEN, 3).setDuplicateMergingEnabled(false).setScrollSpeedFactor(1.2f).setScaleTextSize(1.2f)
-        .setCacheStuffer(new SpannedCacheStuffer(), mCacheStufferAdapter) // 图文混排使用SpannedCacheStuffer
-//        .setCacheStuffer(new BackgroundCacheStuffer())  // 绘制背景使用BackgroundCacheStuffer
-        .setMaximumLines(maxLinesPair)
-        .preventOverlapping(overlappingEnablePair).setDanmakuMargin(40);
+        mContext.setDanmakuStyle(IDisplayer.DANMAKU_STYLE_STROKEN, 3).setDuplicateMergingEnabled(false)
+            .setScrollSpeedFactor(1.2f).setScaleTextSize(1.2f)
+            .setCacheStuffer(new SpannedCacheStuffer(), mCacheStufferAdapter) // 图文混排使用SpannedCacheStuffer
+            //.setCacheStuffer(new BackgroundCacheStuffer(),null)  // 绘制背景使用BackgroundCacheStuffer
+            .setMaximumLines(maxLinesPair)
+            .preventOverlapping(overlappingEnablePair).setDanmakuMargin(40);
         if (mDanmakuView != null) {
             mParser = createParser(this.getResources().openRawResource(R.raw.comments));
             mDanmakuView.setCallback(new master.flame.danmaku.controller.DrawHandler.Callback() {
@@ -275,16 +266,37 @@ public class MainActivity extends Activity implements View.OnClickListener {
             mDanmakuView.enableDanmakuDrawingCache(true);
         }
 
-        if (mVideoView != null) {
-            mVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                @Override
-                public void onPrepared(MediaPlayer mediaPlayer) {
-                    mediaPlayer.start();
-                }
-            });
-            mVideoView.setVideoPath(Environment.getExternalStorageDirectory() + "/1.flv");
-        }
+        initVideoPlayer();
+    }
 
+    private void initVideoPlayer() {
+        mVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+            @Override
+            public void onPrepared(MediaPlayer mediaPlayer) {
+                mediaPlayer.start();
+            }
+        });
+        mVideoView.setOnErrorListener(new OnErrorListener() {
+            @Override
+            public boolean onError(MediaPlayer mediaPlayer, int i, int i1) {
+                Log.d("dq-dm", "onError i=" + i + ",i1=" + i1);
+                return false;
+            }
+        });
+        mVideoView.setOnCompletionListener(new OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mediaPlayer) {
+                mVideoView.start();
+            }
+        });
+        //String path = Environment.getExternalStorageDirectory().getAbsolutePath() + "/test.mp4";
+        //mVideoView.setVideoPath(path);
+
+        //Uri uri = Uri.parse("http://cc.fp.ps.netease.com/file/623c3ce6499f99a403b00858lPfwIylu04");
+        //Uri uri = Uri.parse("http://cc.fp.ps.netease.com/file/6109f609a7f2523db11fe849C4W39NZI03");
+        Uri uri = Uri.parse("http://fp-dev.webapp.163.com/cc/file/609ca79354b2d31290496a51ydBxhqtk02.mp4");
+        mVideoView.setVideoURI(uri);
+        mVideoView.start();
     }
 
     @Override
@@ -334,10 +346,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
         if (v == mMediaController) {
             mMediaController.setVisibility(View.GONE);
         }
-        if (mDanmakuView == null || !mDanmakuView.isPrepared())
+        if (mDanmakuView == null || !mDanmakuView.isPrepared()) {
             return;
+        }
         if (v == mBtnRotate) {
-            setRequestedOrientation(getRequestedOrientation() == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            setRequestedOrientation(getRequestedOrientation() == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         } else if (v == mBtnHideDanmaku) {
             mDanmakuView.hide();
             // mPausedPosition = mDanmakuView.hideAndPauseDrawTask();
@@ -367,7 +381,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
-    Timer timer = new Timer();
+    private Timer timer = new Timer();
 
     class AsyncAddTask extends TimerTask {
 
@@ -378,7 +392,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
                 SystemClock.sleep(20);
             }
         }
-    };
+    }
+
+    ;
 
     private void addDanmaku(boolean islive) {
         BaseDanmaku danmaku = mContext.mDanmakuFactory.createDanmaku(BaseDanmaku.TYPE_SCROLL_RL);
@@ -424,7 +440,9 @@ public class MainActivity extends Activity implements View.OnClickListener {
         ImageSpan span = new ImageSpan(drawable);//ImageSpan.ALIGN_BOTTOM);
         spannableStringBuilder.setSpan(span, 0, text.length(), Spannable.SPAN_INCLUSIVE_EXCLUSIVE);
         spannableStringBuilder.append("图文混排");
-        spannableStringBuilder.setSpan(new BackgroundColorSpan(Color.parseColor("#8A2233B1")), 0, spannableStringBuilder.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
+        spannableStringBuilder
+            .setSpan(new BackgroundColorSpan(Color.parseColor("#8A2233B1")), 0, spannableStringBuilder.length(),
+                Spannable.SPAN_INCLUSIVE_INCLUSIVE);
         return spannableStringBuilder;
     }
 
